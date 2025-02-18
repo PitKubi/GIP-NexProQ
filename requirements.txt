@@ -5,3 +5,4 @@ plotly~=6.0.0
 scipy~=1.15.1
 scikit-learn~=1.6.1
 img2pdf~=0.6.0
+kaleido
