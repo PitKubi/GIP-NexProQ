@@ -517,6 +517,7 @@ elif menu == "Data Refinement":
     # Ensure the wide table is available (it should have been stored in session_state during "Calculate Concentrations")
     if "wide_table" not in st.session_state:
         st.error("Wide table not available. Please run the concentration calculations first.")
+        st.stop()
     else:
         wide_table = st.session_state["wide_table"]
 
