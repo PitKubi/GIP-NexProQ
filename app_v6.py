@@ -545,7 +545,7 @@ elif menu == "Data Refinement":
         st.dataframe(norm_wide_table)
         st.download_button(
             label="Download Normalized Wide Table CSV",
-            data=norm_wide_table.to_csv(index=False).encode('utf-8'),
+            data=norm_wide_table.to_csv(index=True, index_label="Protein_Peptide").encode('utf-8'),
             file_name="normalized_wide_table.csv",
             mime="text/csv"
         )
