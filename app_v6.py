@@ -560,3 +560,106 @@ elif menu == "Data Refinement":
                 yaxis_title="Count"
             )
             st.plotly_chart(fig, use_container_width=True)
+
+    import numpy as np
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    from scipy.stats import spearmanr
+    from sklearn.linear_model import TheilSenRegressor
+
+
+    def plot_pairwise_interactive_correlations(df, columns):
+        """
+        Create interactive pairwise scatter plots with robust regression lines and Spearman ρ
+        for every unique pair of the specified columns.
+        """
+        # Generate all unique pairs
+        pairs = [(columns[i], columns[j]) for i in range(len(columns)) for j in range(i + 1, len(columns))]
+        n_plots = len(pairs)
+
+        # Define grid layout (adjust n_cols as needed)
+        n_cols = 3
+        n_rows = int(np.ceil(n_plots / n_cols))
+
+        # Create subplots
+        fig = make_subplots(
+            rows=n_rows, cols=n_cols,
+            subplot_titles=[f"{x} vs {y} (x vs y)" for x, y in pairs]
+        )
+
+        # Loop through each pair and add traces
+        for idx, (xcol, ycol) in enumerate(pairs):
+            row = idx // n_cols + 1
+            col = idx % n_cols + 1
+
+            subset = df[[xcol, ycol]].dropna()
+            if len(subset) < 2:
+                fig.add_annotation(
+                    text="Not enough data", row=row, col=col, showarrow=False
+                )
+                continue
+
+            # Scatter trace
+            fig.add_trace(
+                go.Scatter(
+                    x=subset[xcol],
+                    y=subset[ycol],
+                    mode='markers',
+                    marker=dict(color='blue'),
+                    name=f"{xcol} vs {ycol}"
+                ),
+                row=row, col=col
+            )
+
+            # Robust regression using Theil-Sen estimator
+            x_vals = subset[xcol].values.reshape(-1, 1)
+            y_vals = subset[ycol].values
+            model = TheilSenRegressor(random_state=42).fit(x_vals, y_vals)
+            x_line = np.linspace(x_vals.min(), x_vals.max(), 100)
+            y_line = model.predict(x_line.reshape(-1, 1))
+
+            # Regression line trace
+            fig.add_trace(
+                go.Scatter(
+                    x=x_line,
+                    y=y_line,
+                    mode='lines',
+                    line=dict(color='red', dash='dash'),
+                    name="Robust Regression"
+                ),
+                row=row, col=col
+            )
+
+            # Calculate Spearman correlation
+            rho, _ = spearmanr(subset[xcol], subset[ycol])
+
+            # Use "x domain" for the first subplot, then "x2 domain", "x3 domain", etc.
+            xref = "x domain" if idx == 0 else f"x{idx + 1} domain"
+            yref = "y domain" if idx == 0 else f"y{idx + 1} domain"
+
+            # Add annotation for correlation in the subplot
+            fig.add_annotation(
+                text=f"ρ = {rho:.2f}",
+                x=0.05, y=0.95,
+                xref=xref, yref=yref,
+                showarrow=False,
+                font=dict(color="red", size=12),
+                row=row, col=col
+            )
+
+        fig.update_layout(
+            height=400 * n_rows,
+            width=500 * n_cols,
+            showlegend=False,
+            title_text="Pairwise Correlation Plots with Robust Regression"
+        )
+        return fig
+
+
+    # --- Inside your Data Refinement block, after normalization ---
+    # Identify concentration columns excluding 'Protein_Peptide' and columns with the '_SE' suffix.
+    conc_cols = [col for col in norm_wide_table.columns if col != "Protein_Peptide" and not col.endswith("_SE")]
+
+    st.subheader("Interactive Pairwise Correlation Plots of Normalized Concentrations")
+    fig = plot_pairwise_interactive_correlations(norm_wide_table, conc_cols)
+    st.plotly_chart(fig, use_container_width=True)
