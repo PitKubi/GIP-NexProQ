@@ -29,9 +29,9 @@ if "experiment_group_mapping" not in st.session_state:
 	st.session_state["experiment_group_mapping"] = {}
 
 # --- Page Selection ---
-menu = st.sidebar.radio("Select Operation", ["Generate Template", "Process Data"], key="page_menu")
+menu = st.sidebar.radio("Select Operation", ["Generate Template", "Calculate Concentrations"], key="page_menu")
 
-st.title("CSV Regression Processor")
+st.title("GIP - NexProQ: Data extraction and analysis  pipeline")
 # ------------------
 # Generate Template
 # ------------------
