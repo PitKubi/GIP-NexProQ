@@ -261,6 +261,18 @@ elif menu == "Calculate Concentrations":
         #     file_name="merged_data.csv",
         #     mime="text/csv"
         # )
+        # --- New Filtering Step ---
+        # Remove IDs where more than 2 known concentrations have Transition Results of 0 or NaN
+        valid_ids = merged_df[merged_df["conc"] != "unknown"] \
+            .groupby("ID")["Transition Result"] \
+            .apply(lambda x: (x.isna() | (x == 0)).sum() <= 2)
+
+        # Get the IDs that meet the condition
+        valid_ids = valid_ids[valid_ids].index
+
+        # Filter merged_df to keep only rows with valid IDs
+        merged_df = merged_df[merged_df["ID"].isin(valid_ids)]
+
 
     # ... Continue with your downstream processing (calibration, tables, regression plots, etc.) ...
 
@@ -573,9 +585,27 @@ elif menu == "Data Refinement":
         Create interactive pairwise scatter plots with robust regression lines and Spearman ρ
         for every unique pair of the specified columns.
         """
+        # Check if there are at least two columns to form a pair
+        if len(columns) < 2:
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Not enough concentration columns for pairwise correlation plots.",
+                xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False
+            )
+            return fig
+
         # Generate all unique pairs
         pairs = [(columns[i], columns[j]) for i in range(len(columns)) for j in range(i + 1, len(columns))]
         n_plots = len(pairs)
+
+        # If no pairs are generated (shouldn't happen if len(columns) >= 2), handle it
+        if n_plots == 0:
+            fig = go.Figure()
+            fig.add_annotation(
+                text="No pairs to plot.",
+                xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False
+            )
+            return fig
 
         # Define grid layout (adjust n_cols as needed)
         n_cols = 3
@@ -632,16 +662,12 @@ elif menu == "Data Refinement":
 
             # Calculate Spearman correlation
             rho, _ = spearmanr(subset[xcol], subset[ycol])
-
-            # Use "x domain" for the first subplot, then "x2 domain", "x3 domain", etc.
-            xref = "x domain" if idx == 0 else f"x{idx + 1} domain"
-            yref = "y domain" if idx == 0 else f"y{idx + 1} domain"
-
-            # Add annotation for correlation in the subplot
+            # Annotation for correlation
             fig.add_annotation(
                 text=f"ρ = {rho:.2f}",
                 x=0.05, y=0.95,
-                xref=xref, yref=yref,
+                xref=f"x{idx + 1 if idx > 0 else ''} domain",
+                yref=f"y{idx + 1 if idx > 0 else ''} domain",
                 showarrow=False,
                 font=dict(color="red", size=12),
                 row=row, col=col
