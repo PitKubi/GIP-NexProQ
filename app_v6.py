@@ -205,21 +205,37 @@ elif menu == "Calculate Concentrations":
     df = pd.read_csv(io.BytesIO(st.session_state["process_input_data"]))
     df["Transition Result"] = pd.to_numeric(df["Transition Result"], errors="coerce")
 
-
     ###############################################
     # Step 1: Precursor Filtering and ID Creation #
     ###############################################
+
+    # First, try to find proper precursor rows
     df_precursor = df[df["Fragment Ion"].str.lower() == "precursor"].copy()
-    df_precursor["Precursor"] = df_precursor["Precursor"].astype(str)
-    df_precursor["ID"] = (
-            df_precursor["Replicate"].astype(str) + "_" +
-            df_precursor["Protein"].astype(str) + "_" +
-            df_precursor["Peptide"].astype(str) + "_" +
-            df_precursor["Precursor"].astype(str)
-    )
-    idx_max = df_precursor.groupby(["Replicate", "Protein", "Peptide"])["Transition Result"].idxmax()
-    df_filtered_precursor = df_precursor.loc[idx_max].reset_index(drop=True)
-    precursor_ids = df_filtered_precursor["ID"].unique()
+
+    if not df_precursor.empty:
+        # Use only "precursor" fragment ion rows and pick best per peptide
+        df_precursor["Precursor"] = df_precursor["Precursor"].astype(str)
+        df_precursor["ID"] = (
+                df_precursor["Replicate"].astype(str) + "_" +
+                df_precursor["Protein"].astype(str) + "_" +
+                df_precursor["Peptide"].astype(str) + "_" +
+                df_precursor["Precursor"]
+        )
+        idx_max = df_precursor.groupby(["Replicate", "Protein", "Peptide"])["Transition Result"].idxmax()
+        df_filtered_precursor = df_precursor.loc[idx_max].reset_index(drop=True)
+        precursor_ids = df_filtered_precursor["ID"].unique()
+        st.info(f"✅ Using {len(precursor_ids)} precursor IDs from 'Fragment Ion == precursor'")
+    else:
+        # Fallback: use all rows and build ID directly, no filtering
+        st.warning("⚠️ No 'precursor' fragment ions found. Falling back to all rows for ID generation.")
+        df["Precursor"] = df["Precursor"].astype(str)
+        df["ID"] = (
+                df["Replicate"].astype(str) + "_" +
+                df["Protein"].astype(str) + "_" +
+                df["Peptide"].astype(str) + "_" +
+                df["Precursor"]
+        )
+        precursor_ids = df["ID"].unique()
 
     #####################################################
     # Step 2: Filter TMT Rows Using the Precursor IDs    #
@@ -263,14 +279,17 @@ elif menu == "Calculate Concentrations":
         # )
         # --- New Filtering Step ---
         # Remove IDs where more than 2 known concentrations have Transition Results of 0 or NaN
-        valid_ids = merged_df[merged_df["conc"] != "unknown"] \
-            .groupby("ID")["Transition Result"] \
-            .apply(lambda x: (x.isna() | (x == 0)).sum() <= 2)
+        # Get only known concentration rows
+        known_df = merged_df[merged_df["conc"] != "unknown"].copy()
 
-        # Get the IDs that meet the condition
-        valid_ids = valid_ids[valid_ids].index
+        # Group by ID and check:
+        # - at least 2 rows
+        # - at least one Transition Result > 0
+        valid_ids = known_df.groupby("ID").filter(
+            lambda g: len(g) >= 2 and (g["Transition Result"] > 0).sum() >= 2
+        )["ID"].unique()
 
-        # Filter merged_df to keep only rows with valid IDs
+        # Filter main merged_df to only valid IDs
         merged_df = merged_df[merged_df["ID"].isin(valid_ids)]
 
 
