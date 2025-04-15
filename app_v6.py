@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
 import io
 import img2pdf
-from scipy.stats import t
-from plotly.subplots import make_subplots  # required for subplots
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from scipy.stats import spearmanr
+from sklearn.linear_model import TheilSenRegressor
+
 
 
 # Helper function to abbreviate sample names for plotting
@@ -423,8 +425,46 @@ elif menu == "Calculate Concentrations":
         mime="text/csv"
     )
     st.session_state["wide_table"] = wide_table.copy()
+    #####Second optional deconvoluted wide table
+    # --- New Toggle for Separate TMT Channels ---
+    if st.checkbox("Show separate wide table by TMT Channel", key="toggle_separate_tmt"):
+        # Create a new identifier that includes Sample Name, Replicate, and TMT Channel
+        merged_calibrated["Sample_Rep_TMT"] = (
+                merged_calibrated["Sample Name"].astype(str) + "_" +
+                merged_calibrated["Replicate_template"].astype(str) + "_" +
+                merged_calibrated["TMT Channel"].astype(str)
+        )
 
+        # Pivot table for estimated concentrations using the new identifier as columns
+        conc_wide_sep = merged_calibrated.pivot_table(
+            index="Protein_Peptide",
+            columns="Sample_Rep_TMT",
+            values="calc_conc",
+            aggfunc='first'
+        )
 
+        # Pivot table for the associated standard errors
+        se_wide_sep = merged_calibrated.pivot_table(
+            index="Protein_Peptide",
+            columns="Sample_Rep_TMT",
+            values="calc_se",
+            aggfunc='first'
+        )
+
+        # Combine the concentration and SE tables so each TMT channel gets two adjacent columns
+        wide_table_sep = pd.DataFrame(index=conc_wide_sep.index)
+        for col in conc_wide_sep.columns:
+            wide_table_sep[col] = conc_wide_sep[col]
+            wide_table_sep[col + "_SE"] = se_wide_sep[col]
+
+        st.write("### Wide Table with Separate TMT Channels")
+        st.dataframe(wide_table_sep)
+        st.download_button(
+            label="Download Separate Wide Table CSV",
+            data=wide_table_sep.to_csv().encode('utf-8'),
+            file_name="wide_table_separate_tmt.csv",
+            mime="text/csv"
+        )
 
     # ---------------------------
     # Interactive Regression Plotting Section
@@ -598,11 +638,7 @@ elif menu == "Data Refinement":
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    import numpy as np
-    import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
-    from scipy.stats import spearmanr
-    from sklearn.linear_model import TheilSenRegressor
+
 
 
     def plot_pairwise_interactive_correlations(df, columns):
