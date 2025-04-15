@@ -1,11 +1,14 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
 import io
 import img2pdf
-from scipy.stats import t
-from plotly.subplots import make_subplots  # required for subplots
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from scipy.stats import spearmanr
+from sklearn.linear_model import TheilSenRegressor
+
 
 
 # Helper function to abbreviate sample names for plotting
@@ -636,11 +639,7 @@ elif menu == "Data Refinement":
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    import numpy as np
-    import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
-    from scipy.stats import spearmanr
-    from sklearn.linear_model import TheilSenRegressor
+
 
 
     def plot_pairwise_interactive_correlations(df, columns):
