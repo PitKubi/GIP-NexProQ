@@ -199,7 +199,9 @@ elif menu == "Calculate Concentrations":
                     st.error("Error reading uploaded files: " + str(e))
             else:
                 st.error("Please upload both the raw CSV and the template CSV.")
-        st.stop()  # Stop further execution until the files are loaded.
+        if st.session_state.get("process_input_data") is None:
+            st.stop()
+
 
     # If we reach here, the raw CSV and template are already loaded.
     df = pd.read_csv(io.BytesIO(st.session_state["process_input_data"]))
@@ -266,6 +268,8 @@ elif menu == "Calculate Concentrations":
             suffixes=("", "_template")
         )
         # Exclude rows where concentration is marked for deletion and replace empty with unknown:
+        # Convert the 'conc' column to strings (handling NaNs by filling them with an empty string)
+        merged_df["conc"] = merged_df["conc"].fillna("").astype(str)
         merged_df = merged_df[merged_df["conc"].str.lower() != "delete"]
         merged_df["conc"] = merged_df["conc"].replace("", "unknown")
         merged_df["Sample_TMT"] = merged_df["Sample Name"].fillna("") + "_" + merged_df["Fragment Ion"].fillna("")
@@ -419,7 +423,46 @@ elif menu == "Calculate Concentrations":
         mime="text/csv"
     )
     st.session_state["wide_table"] = wide_table.copy()
+    #####Second optional deconvoluted wide table
+    # --- New Toggle for Separate TMT Channels ---
+    if st.checkbox("Show separate wide table by TMT Channel", key="toggle_separate_tmt"):
+        # Create a new identifier that includes Sample Name, Replicate, and TMT Channel
+        merged_calibrated["Sample_Rep_TMT"] = (
+                merged_calibrated["Sample Name"].astype(str) + "_" +
+                merged_calibrated["Replicate_template"].astype(str) + "_" +
+                merged_calibrated["TMT Channel"].astype(str)
+        )
 
+        # Pivot table for estimated concentrations using the new identifier as columns
+        conc_wide_sep = merged_calibrated.pivot_table(
+            index="Protein_Peptide",
+            columns="Sample_Rep_TMT",
+            values="calc_conc",
+            aggfunc='first'
+        )
+
+        # Pivot table for the associated standard errors
+        se_wide_sep = merged_calibrated.pivot_table(
+            index="Protein_Peptide",
+            columns="Sample_Rep_TMT",
+            values="calc_se",
+            aggfunc='first'
+        )
+
+        # Combine the concentration and SE tables so each TMT channel gets two adjacent columns
+        wide_table_sep = pd.DataFrame(index=conc_wide_sep.index)
+        for col in conc_wide_sep.columns:
+            wide_table_sep[col] = conc_wide_sep[col]
+            wide_table_sep[col + "_SE"] = se_wide_sep[col]
+
+        st.write("### Wide Table with Separate TMT Channels")
+        st.dataframe(wide_table_sep)
+        st.download_button(
+            label="Download Separate Wide Table CSV",
+            data=wide_table_sep.to_csv().encode('utf-8'),
+            file_name="wide_table_separate_tmt.csv",
+            mime="text/csv"
+        )
 
     # ---------------------------
     # Interactive Regression Plotting Section
