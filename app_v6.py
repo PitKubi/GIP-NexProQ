@@ -301,23 +301,90 @@ elif menu == "Calculate Concentrations":
 
     # ... Continue with your downstream processing (calibration, tables, regression plots, etc.) ...
 
+    st.subheader("LOD / Baseline options")
 
+    use_blanks = st.checkbox(
+        "Treat samples whose name contains 'blank' as blanks and compute LOD from them (median Transition Result)",
+        value=True,
+        help="If checked, all rows where Sample Name OR Original Sample contains 'blank' (case-insensitive) are pooled per-ID to compute an LOD baseline (median Transition Result)."
+    )
+
+    lod_override_text = st.text_input(
+        "Optional: Override LOD baseline (Transition Result units) for ALL IDs (leave empty to use blanks or 0)",
+        value="",
+        help="If set, this numeric value overrides the blank-derived baseline for all IDs."
+    )
+    lod_override = None
+    try:
+        lod_override = float(lod_override_text) if lod_override_text.strip() != "" else None
+    except:
+        st.warning("LOD override must be numeric; ignoring override.")
+
+    lod_policy = st.selectbox(
+        "When a calibration point (known concentration) is below the LOD:",
+        ["Drop that point", "Clamp the lowest x to 0 and keep"],
+        index=0,
+        help="Drop: remove those points from the fit. Clamp: if the lowest point is below LOD, set its Transition Result to 0 and keep it."
+    )
+
+    # UI
+    unknown_lod_action = st.selectbox(
+        "For UNKNOWN samples below LOD:",
+        ["Keep (just flag BLOQ)", "Set calc_conc to 0", "Drop from wide table"],
+        index=0
+    )
 
 
     # ---------------------------
     # Step A: Calibration Function
     # ---------------------------
     def calibrate_group(group):
-        # Compute regression parameters using only rows with known concentration (conc != "unknown")
+        """
+        Per-ID calibration (ID = Replicate + Protein + Peptide + Precursor)
+        - LOD baseline from pooled blanks (or global override)
+        - Weighted least squares with 1/x^2 weights for known points
+        - Below-LOD handling (drop or clamp lowest to zero)
+        - Predict unknowns with SE
+        """
+        # Determine LOD baseline for this group
+        baseline = None
+
+        # Identify blanks (either Sample Name or Original Sample contains "blank")
+        is_blank = (
+                group.get("Sample Name", pd.Series("", index=group.index)).astype(str).str.contains("blank", case=False,
+                                                                                                    na=False)
+                | group.get("Original Sample", pd.Series("", index=group.index)).astype(str).str.contains("blank",
+                                                                                                          case=False,
+                                                                                                          na=False)
+        )
+        if use_blanks and is_blank.any():
+            # median Transition Result among blanks in THIS group
+            baseline = group.loc[is_blank, "Transition Result"].median(skipna=True)
+
+        # User override wins if provided
+        if lod_override is not None:
+            baseline = lod_override
+
+        # If still None (no blanks and no override), set to 0
+        if baseline is None or pd.isna(baseline):
+            baseline = 0.0
+
+        # Flag all rows w.r.t. LOD baseline
+        group["lod_baseline"] = baseline
+        group["below_LOD"] = group["Transition Result"] < baseline
+
+        # Known points for fitting
         known = group[group["conc"] != "unknown"].copy()
-        n = len(known)
-        if n < 2:
+        if len(known) < 2:
+            # Not enough known points to calibrate
             group["calc_conc"] = np.nan
             group["calc_se"] = np.nan
             group["slope"] = np.nan
             group["intercept"] = np.nan
             group["R2"] = np.nan
             return group
+
+        # Parse known concentrations to float
         try:
             known["conc_float"] = known["conc"].astype(float)
         except Exception as e:
@@ -329,39 +396,106 @@ elif menu == "Calculate Concentrations":
             group["R2"] = np.nan
             return group
 
-        # Perform linear regression on the known points
-        x = known["Transition Result"].astype(float)
-        y = known["conc_float"]
-        slope, intercept = np.polyfit(x, y, 1)
-        y_pred = slope * x + intercept
-        residuals = y - y_pred
-        mse = np.sum(residuals ** 2) / (n - 2) if n > 2 else np.sum(residuals ** 2) / n
-        x_mean = x.mean()
-        Sxx = np.sum((x - x_mean) ** 2)
-        R2 = 1 - np.sum(residuals ** 2) / np.sum((y - y.mean()) ** 2) if np.sum((y - y.mean()) ** 2) > 0 else 1.0
+        # Apply LOD policy to known points
+        known_for_fit = known.copy()
+        known_for_fit["clamped_to_zero"] = False
 
-        # For each row, if the concentration is unknown, predict it using the regression;
-        # if known, leave the calculated values empty.
-        def predict_with_se(row):
+        if lod_policy == "Drop that point":
+            known_for_fit = known_for_fit[~(known_for_fit["Transition Result"] < baseline)]
+            if len(known_for_fit) < 2:
+                group["calc_conc"] = np.nan
+                group["calc_se"] = np.nan
+                group["slope"] = np.nan
+                group["intercept"] = np.nan
+                group["R2"] = np.nan
+                return group
+        else:
+            # Clamp the single lowest below-LOD known x to 0; drop other below-LOD known points
+            below_mask = known_for_fit["Transition Result"] < baseline
+            if below_mask.any():
+                # index of the minimum x among below-LOD points
+                min_idx = known_for_fit.loc[below_mask, "Transition Result"].idxmin()
+                # clamp that one to zero
+                known_for_fit.loc[min_idx, "Transition Result"] = 0.0
+                known_for_fit.loc[min_idx, "clamped_to_zero"] = True
+                # drop all other below-LOD known points
+                drop_others = below_mask & (known_for_fit.index != min_idx)
+                known_for_fit = known_for_fit.loc[~drop_others]
+            if len(known_for_fit) < 2:
+                group[["calc_conc", "calc_se", "slope", "intercept", "R2"]] = np.nan
+                return group
+
+        # Prepare WLS (1/x^2) design
+        x = known_for_fit["Transition Result"].astype(float).values
+        y = known_for_fit["conc_float"].values
+        eps = 1e-12
+        w = 1.0 / (np.maximum(x, eps) ** 2)
+
+        # Fit weighted line: y = m x + b
+        # numpy.polyfit supports weights; it applies them to y (WLS).
+        try:
+            m, b = np.polyfit(x, y, 1, w=w)
+        except Exception as e:
+            st.error(f"WLS fit failed: {e}")
+            group["calc_conc"] = np.nan
+            group["calc_se"] = np.nan
+            group["slope"] = np.nan
+            group["intercept"] = np.nan
+            group["R2"] = np.nan
+            return group
+
+        # Weighted residuals and R^2
+        y_hat = m * x + b
+        resid = y - y_hat
+        # Weighted SSE and SST
+        ss_res = np.sum(w * resid ** 2)
+        y_wmean = np.average(y, weights=w)
+        ss_tot = np.sum(w * (y - y_wmean) ** 2)
+        R2w = 1 - ss_res / ss_tot if ss_tot > 0 else np.nan
+
+        # Estimate sigma^2 with DOF = n - 2
+        n = len(y)
+        dof = max(n - 2, 1)
+        sigma2 = ss_res / dof
+
+        # For prediction SE we need (X^T W X)^-1
+        X = np.vstack([x, np.ones_like(x)]).T  # columns: [x, 1]
+        # Build (X^T W X)
+        XtWX = (X.T * w) @ X
+        try:
+            XtWX_inv = np.linalg.pinv(XtWX)
+        except Exception:
+            XtWX_inv = np.linalg.pinv(XtWX + 1e-12 * np.eye(2))
+
+        # Predict unknowns (and keep known rows' calc_* empty)
+        def predict_row(row):
             if row["conc"] == "unknown":
                 x0 = float(row["Transition Result"])
-                pred = slope * x0 + intercept
-                se = np.sqrt(mse * (1 + 1 / n + ((x0 - x_mean) ** 2 / Sxx))) if Sxx > 0 else np.sqrt(mse * (1 + 1 / n))
-                return pd.Series({"calc_conc": pred, "calc_se": se})
+                y0 = m * x0 + b
+                v = np.array([x0, 1.0])
+                var_pred = sigma2 * (1.0 + v @ XtWX_inv @ v.T)  # prediction variance
+                se = float(np.sqrt(max(var_pred, 0.0)))
+                return pd.Series({"calc_conc": y0, "calc_se": se})
             else:
                 return pd.Series({"calc_conc": np.nan, "calc_se": np.nan})
 
-        preds = group.apply(predict_with_se, axis=1)
+        preds = group.apply(predict_row, axis=1)
         group["calc_conc"] = preds["calc_conc"]
         group["calc_se"] = preds["calc_se"]
-        group["slope"] = slope
-        group["intercept"] = intercept
-        group["R2"] = R2
+        group["slope"] = m
+        group["intercept"] = b
+        group["R2"] = R2w
         return group
 
 
     # Apply calibration per unique ID (ID = Replicate + Protein + Peptide + Precursor)
     merged_calibrated = merged_df.groupby("ID").apply(calibrate_group).reset_index(drop=True)
+    if unknown_lod_action != "Keep (just flag BLOQ)":
+        mask_est_below = (merged_calibrated["conc"] == "unknown") & (merged_calibrated["below_LOD"])
+        if unknown_lod_action == "Set calc_conc to 0":
+            merged_calibrated.loc[mask_est_below, "calc_conc"] = 0.0
+        else:  # "Drop from wide table"
+            merged_calibrated = merged_calibrated.loc[~mask_est_below]
 
     ###############################################
     # Step B: Display and Download the Long Format Table
@@ -370,7 +504,8 @@ elif menu == "Calculate Concentrations":
     df_long = merged_calibrated.copy()
     mask = df_long["conc"] != "unknown"
     df_long.loc[mask, "Sample Name"] = ""
-    df_long.loc[mask, "Replicate_template"] = ""  # Adjust the column name if needed
+    if "Replicate_template" in df_long.columns:
+        df_long.loc[mask, "Replicate_template"] = ""
 
     st.write("### Long Format Table (Including calculated values for Unknowns):")
     #st.dataframe(df_long)
@@ -384,6 +519,8 @@ elif menu == "Calculate Concentrations":
     # ---------------------------
     # Step C: Create Wide Table Using Template's Sample Name + Replicate
     # ---------------------------
+
+
     # Create a combined identifier for Protein and Peptide.
     merged_calibrated["Protein_Peptide"] = (
             merged_calibrated["Protein"].astype(str) + "_" +
@@ -416,15 +553,50 @@ elif menu == "Calculate Concentrations":
         wide_table[sample] = conc_wide[sample]
         wide_table[sample + "_SE"] = se_wide[sample]
 
-    st.write("### Wide Table: Estimated Concentrations and Standard Errors")
-    st.dataframe(wide_table)
+    # Add a BLOQ (below LOD) sheet next to each Sample_Rep
+    # We consider BLOQ for unknown (estimated) rows; for known rows we leave it empty.
+    bloq_long = merged_calibrated.copy()
+    bloq_long = bloq_long[bloq_long["conc"] == "unknown"][["Protein_Peptide", "Sample_Rep", "below_LOD"]]
+
+    bloq_wide = bloq_long.pivot_table(
+        index="Protein_Peptide",
+        columns="Sample_Rep",
+        values="below_LOD",
+        aggfunc="first"
+    )
+
+    # Stitch BLOQ flags into the wide table, adjacent to each sample column
+    wide_with_flags = pd.DataFrame(index=wide_table.index)
+    for col in [c for c in wide_table.columns if not c.endswith("_SE")]:
+        wide_with_flags[col] = wide_table[col]
+        wide_with_flags[col + "_SE"] = wide_table.get(col + "_SE", np.nan)
+        # Boolean flag (True=below LOD); if missing, set False
+        if bloq_wide is not None and col in getattr(bloq_wide, "columns", []):
+            wide_with_flags[col + "_BLOQ"] = bloq_wide[col].fillna(False).astype(bool)
+        else:
+            wide_with_flags[col + "_BLOQ"] = False
+
+    st.write("### Wide Table: Estimated Concentrations, SE, and BLOQ (Below LOD) flags")
+    st.dataframe(wide_with_flags)
     st.download_button(
-        label="Download Wide Table CSV",
-        data=wide_table.to_csv().encode('utf-8'),
-        file_name="wide_table.csv",
+        label="Download Wide Table (+BLOQ) CSV",
+        data=wide_with_flags.to_csv().encode('utf-8'),
+        file_name="wide_table_with_bloq.csv",
         mime="text/csv"
     )
-    st.session_state["wide_table"] = wide_table.copy()
+
+    # Keep in session
+    st.session_state["wide_table"] = wide_with_flags.copy()
+
+    # st.write("### Wide Table: Estimated Concentrations and Standard Errors")
+    # st.dataframe(wide_table)
+    # st.download_button(
+    #     label="Download Wide Table CSV",
+    #     data=wide_table.to_csv().encode('utf-8'),
+    #     file_name="wide_table.csv",
+    #     mime="text/csv"
+    # )
+    # st.session_state["wide_table"] = wide_table.copy()
     #####Second optional deconvoluted wide table
     # --- New Toggle for Separate TMT Channels ---
     if st.checkbox("Show separate wide table by TMT Channel", key="toggle_separate_tmt"):
@@ -502,7 +674,7 @@ elif menu == "Calculate Concentrations":
                 y=y_vals,
                 mode='lines',
                 line=dict(color='blue'),
-                name=f"Fit: y = {slope:.2e}x + ({intercept:.2f}) (R²={R2:.1f})"
+                name=f"WLS (1/x²): y = {slope:.3e}·x + {intercept:.3f}  (R²={R2:.3f})"
             ))
         else:
             fig.add_annotation(text="No known calibration points", showarrow=False,
@@ -545,6 +717,20 @@ elif menu == "Calculate Concentrations":
             yaxis_title="Relative Concentration",
             legend_title="Data Type"
         )
+
+        # inside plot_regression_for_id, after computing known/unknown:
+        lod = data["lod_baseline"].dropna().iloc[0] if "lod_baseline" in data and data[
+            "lod_baseline"].notna().any() else None
+        if lod is not None and not known.empty:
+            fig.add_shape(
+                type="line",
+                x0=lod, x1=lod,
+                y0=min(0, known["conc"].astype(float).min()),
+                y1=max(known["conc"].astype(float).max(), (unknown["calc_conc"].max() if not unknown.empty else 0)),
+                line=dict(dash="dot"),
+                name="LOD"
+            )
+            fig.add_annotation(x=lod, y=0, text="LOD", showarrow=False, yshift=10)
 
         return fig
 
