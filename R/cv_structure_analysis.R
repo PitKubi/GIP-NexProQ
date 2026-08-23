@@ -3,7 +3,7 @@
 #   Q3  can we lower the combined intra/inter-day CV? subset? batch removal?
 # Reuses the exact load+normalize logic from manuscript_figures.R.
 suppressPackageStartupMessages({library(tidyverse)})
-proj_dir <- "/home/pk/R projects/Science/NexProQ"; data_dir <- file.path(proj_dir,"data")
+data_dir <- "data"
 df_raw <- readr::read_csv(file.path(data_dir,"wide_table_with_bloq.csv"), guess_max=1e6, show_col_types=FALSE)
 all_cols <- colnames(df_raw)
 meas_regex <- "^(blank2|blank|dbs[123])_d\\d+_\\d+$"

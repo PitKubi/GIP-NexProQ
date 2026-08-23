@@ -6,7 +6,7 @@
 #   * rep1/rep2/rep3 are 3 SEPARATE runs same day     -> CROSS-PLEX (across injections)
 #   * day1..day5                                        -> CROSS-PLEX (across days)
 suppressPackageStartupMessages({library(tidyverse)})
-dd <- "/home/pk/R projects/Science/NexProQ/data"
+dd <- "data"
 df <- readr::read_csv(file.path(dd,"wide_table_with_bloq.csv"), guess_max=1e6, show_col_types=FALSE)
 ac <- colnames(df); mc <- ac[str_detect(ac,"^(dbs[123])_d\\d+_\\d+$") & !str_ends(ac,"SE")]
 long <- bind_cols(df %>% transmute(pid=.[[1]]), df[mc]) %>%

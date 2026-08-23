@@ -4,8 +4,20 @@ The R scripts used for the NexProQ assay characterisation and for generating the
 manuscript figures. They read the exported TMT quantitation tables and write
 figures to `plots/`.
 
-Each script sets its input and output locations at the top (`proj_dir`, `data_dir`,
-`csv_path`); adjust those paths to point at your own copy of the data.
+Paths are relative to the working directory, so run the scripts from the root of
+this repository with the exported quantitation tables placed in `data/`:
+
+```
+Rscript R/manuscript_figures.R
+```
+
+Expected inputs in `data/`:
+
+| File | Used by |
+|---|---|
+| `wide_table_with_bloq.csv` | all CV and plex analyses, `manuscript_figures.R`, `dbs_analysis_v2.R`, `dbs_protein_vsDIA.R` |
+| `validation cohort - first 10 samples - normalized_wide_table.csv` | `manuscript_figures.R`, `dbs_protein_rankplot.R` |
+| `report.pr_matrix.tsv` | `dbs_protein_vsDIA.R` (DIA-NN protein matrix from the discovery run) |
 
 ## Manuscript figures
 

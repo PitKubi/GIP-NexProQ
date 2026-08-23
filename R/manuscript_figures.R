@@ -18,9 +18,8 @@ suppressPackageStartupMessages({
   library(scales)
 })
 
-proj_dir <- "/home/pk/R projects/Science/NexProQ"
-data_dir <- file.path(proj_dir, "data")
-out_dir  <- file.path(proj_dir, "plots")
+data_dir <- "data"
+out_dir  <- "plots"
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 wide_csv <- file.path(data_dir, "wide_table_with_bloq.csv")

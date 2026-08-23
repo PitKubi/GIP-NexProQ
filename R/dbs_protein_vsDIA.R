@@ -3,8 +3,8 @@
 # DIA summarised as per-gene medians across all numeric columns.
 
 # Paths (edit if needed)
-tmt_path <- "/home/pk/Downloads/wide_table_with_bloq.csv"
-dia_path <- "/home/pk/Downloads/report.pr_matrix.tsv"
+tmt_path <- file.path("data", "wide_table_with_bloq.csv")
+dia_path <- file.path("data", "report.pr_matrix.tsv")
 
 pkgs <- c("tidyverse", "patchwork", "stringr")
 need <- pkgs[!pkgs %in% rownames(installed.packages())]

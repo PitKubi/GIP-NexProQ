@@ -1,7 +1,7 @@
 # Why is the intra-day replicate CV ~32% even after per-plex calibration?
 # TMT-informed diagnostics on wide_table_with_bloq.csv (values = concentrations).
 suppressPackageStartupMessages({library(tidyverse)})
-dd <- "/home/pk/R projects/Science/NexProQ/data"
+dd <- "data"
 df <- readr::read_csv(file.path(dd,"wide_table_with_bloq.csv"), guess_max=1e6, show_col_types=FALSE)
 ac <- colnames(df)
 mc <- ac[str_detect(ac,"^(blank2|blank|dbs[123])_d\\d+_\\d+$") & !str_ends(ac,"SE")]

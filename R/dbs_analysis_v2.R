@@ -1,4 +1,4 @@
-csv_path <- "/home/pk/Downloads/wide_table_with_bloq.csv"
+csv_path <- file.path("data", "wide_table_with_bloq.csv")
 
 # --- DBS analysis (normalized to median-of-sample-medians; BLOQ removed; blanks removed)
 #     Correlations use log2; CVs use normalized linear.

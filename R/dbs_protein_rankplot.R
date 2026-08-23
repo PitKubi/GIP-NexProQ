@@ -10,7 +10,7 @@ suppressPackageStartupMessages({
 })
 
 # Input
-csv_path <- "/home/pk/Downloads/validation cohort - first 10 samples - normalized_wide_table.csv"
+csv_path <- file.path("data", "validation cohort - first 10 samples - normalized_wide_table.csv")
 stopifnot(file.exists(csv_path))
 df <- suppressMessages(readr::read_csv(csv_path, guess_max = 100000))
 
@@ -75,7 +75,8 @@ p <- ggplot(stats, aes(x = rank, y = y_mean)) +
 print(p)
 
 # Save
-out_dir <- dirname(csv_path)
+out_dir <- "plots"
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 png_file <- file.path(out_dir, "ranked_means_logSD_clamped_pub.png")
 pdf_file <- file.path(out_dir, "ranked_means_logSD_clamped_pub.pdf")
 

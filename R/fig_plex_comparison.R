@@ -6,8 +6,9 @@
 #      cross-plex stays FLAT (run-to-run co-isolation interference).
 # =============================================================================
 suppressPackageStartupMessages({library(tidyverse); library(patchwork); library(scales)})
-proj <- "/home/pk/R projects/Science/NexProQ"; out <- file.path(proj,"plots")
-df <- readr::read_csv(file.path(proj,"data","wide_table_with_bloq.csv"), guess_max=1e6, show_col_types=FALSE)
+data_dir <- "data"; out <- "plots"
+dir.create(out, showWarnings = FALSE, recursive = TRUE)
+df <- readr::read_csv(file.path(data_dir,"wide_table_with_bloq.csv"), guess_max=1e6, show_col_types=FALSE)
 ac <- colnames(df); mc <- ac[str_detect(ac,"^(dbs[123])_d\\d+_\\d+$") & !str_ends(ac,"SE")]
 long <- bind_cols(df %>% transmute(pid=.[[1]]), df[mc]) %>%
   pivot_longer(-pid,names_to="s",values_to="v") %>%
