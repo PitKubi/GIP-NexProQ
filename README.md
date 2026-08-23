@@ -24,6 +24,7 @@ This repository accompanies:
 | `app_v6.py` | Current Streamlit application: builds the acquisition template, fits the per-plex calibration curves and exports the quantitation tables |
 | `app_v2.py`, `app_v3.py`, `app_v4.py` | Earlier releases of the application, retained for reproducibility of previously generated results |
 | `R/` | R scripts for assay characterisation and for generating the manuscript figures (see `R/README.md`) |
+| `python/` | Analysis scripts that re-implement the application's calibration fit, used for the calibration-curve figure |
 | `requirements.txt` | Python dependencies |
 
 ## Web application

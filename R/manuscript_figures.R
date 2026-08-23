@@ -145,6 +145,9 @@ across_day_cv <- day_means %>%
 # Per 2026-07-09 Vincent call: median only (no mean line/label), panel header
 # moved into the x-axis label, and the "n = …; off-scale" subtitle removed for
 # a clean publication panel.
+# Per Vincent's manuscript comment of 2026-05-26: no text inside panels A and B.
+# The median value and the cross-plex explanation move to the figure legend, so
+# the median is drawn as a bare rule and the axis label carries no parenthetical.
 cv_hist_panel <- function(cv_vec, bar_fill, line_col, xlab, tag) {
   d <- tibble(cv = cv_vec[is.finite(cv_vec)])
   median_cv <- median(d$cv)
@@ -153,8 +156,6 @@ cv_hist_panel <- function(cv_vec, bar_fill, line_col, xlab, tag) {
   ggplot(d, aes(x = cv)) +
     geom_histogram(bins = 40, fill = bar_fill, colour = "white", linewidth = 0.2) +
     geom_vline(xintercept = median_cv, colour = line_col, linewidth = 1.0, linetype = "solid") +
-    annotate("label", x = Inf, y = Inf, hjust = 1.05, vjust = 1.3, size = 5, label.size = 0.3,
-             label = sprintf("median = %.1f%%", median_cv)) +
     scale_x_continuous(breaks = scales::pretty_breaks(n = 8), limits = c(0, x_cap), expand = expansion(mult = c(0, 0.02))) +
     scale_y_continuous(breaks = scales::pretty_breaks(n = 6), expand = expansion(mult = c(0, 0.08))) +
     labs(x = xlab, y = "Count", tag = tag) +
@@ -165,10 +166,13 @@ cv_hist_panel <- function(cv_vec, bar_fill, line_col, xlab, tag) {
 # TMT injections). Intra-day = the 3 replicate injections on one day; inter-day
 # = across the 5 days. (Within-plex precision is shown separately, Fig 5D.)
 pA <- cv_hist_panel(within_day_cv$cv, "#4292c6", "#084594",
-                    "Intra-day CV (%)\n(cross-plex: replicate injections)", "A")
+                    "Intra-day CV (%)", "A")
 pB <- cv_hist_panel(across_day_cv$cv, "#fb6a4a", "#99000D",
-                    "Inter-day CV (%)\n(cross-plex: across days)", "B")
+                    "Inter-day CV (%)", "B")
 fig5AB <- pA + pB + plot_layout(ncol = 2)
+
+message(sprintf("Figure 5A median intra-day CV: %.2f%%", median(within_day_cv$cv)))
+message(sprintf("Figure 5B median inter-day CV: %.2f%%", median(across_day_cv$cv)))
 
 ggsave(file.path(out_dir, "Fig5AB_CV_histograms_manuscript.png"), fig5AB,
        width = 13, height = 5.5, dpi = 600, bg = "white")
