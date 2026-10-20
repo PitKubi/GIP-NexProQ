@@ -27,6 +27,7 @@ Expected inputs in `data/`:
 | `fig_supplemental_discovery.R` | Supplemental Figure 1: depth, detection consistency, dynamic range and cross-run CV of the DIA-PASEF discovery analysis |
 | `fig5_withinplex_comparison.R` | Figure 5A/B on the within-plex axis, plus a comparison of every reproducibility axis in the experiment |
 | `dbs_protein_rankplot.R` | Ranked protein concentration plot from the validation cohort wide table |
+| `export_fig5A_table_and_quant_counts.R` | Exports the per-sample concentration table behind the Figure 5A ranked plot to `tables/`, and recounts the peptides and proteins quantified in the QC reproducibility data |
 | `fig_plex_main.R` | Plex-level summary panels, including the variance partition |
 | `fig_plex_comparison.R` | Comparison of quantitation between TMT plexes |
 
