@@ -330,7 +330,7 @@ elif menu == "Calculate Concentrations":
     # UI
     unknown_lod_action = st.selectbox(
         "For UNKNOWN samples below LOD:",
-        ["Keep (just flag BLOQ)", "Set calc_conc to 0", "Drop from wide table"],
+        ["Keep (just flag BLOD)", "Set calc_conc to 0", "Drop from wide table"],
         index=0
     )
 
@@ -490,7 +490,7 @@ elif menu == "Calculate Concentrations":
 
     # Apply calibration per unique ID (ID = Replicate + Protein + Peptide + Precursor)
     merged_calibrated = merged_df.groupby("ID").apply(calibrate_group).reset_index(drop=True)
-    if unknown_lod_action != "Keep (just flag BLOQ)":
+    if unknown_lod_action != "Keep (just flag BLOD)":
         mask_est_below = (merged_calibrated["conc"] == "unknown") & (merged_calibrated["below_LOD"])
         if unknown_lod_action == "Set calc_conc to 0":
             merged_calibrated.loc[mask_est_below, "calc_conc"] = 0.0
@@ -553,35 +553,35 @@ elif menu == "Calculate Concentrations":
         wide_table[sample] = conc_wide[sample]
         wide_table[sample + "_SE"] = se_wide[sample]
 
-    # Add a BLOQ (below LOD) sheet next to each Sample_Rep
-    # We consider BLOQ for unknown (estimated) rows; for known rows we leave it empty.
-    bloq_long = merged_calibrated.copy()
-    bloq_long = bloq_long[bloq_long["conc"] == "unknown"][["Protein_Peptide", "Sample_Rep", "below_LOD"]]
+    # Add a BLOD (below LOD) sheet next to each Sample_Rep
+    # We consider BLOD for unknown (estimated) rows; for known rows we leave it empty.
+    blod_long = merged_calibrated.copy()
+    blod_long = blod_long[blod_long["conc"] == "unknown"][["Protein_Peptide", "Sample_Rep", "below_LOD"]]
 
-    bloq_wide = bloq_long.pivot_table(
+    blod_wide = blod_long.pivot_table(
         index="Protein_Peptide",
         columns="Sample_Rep",
         values="below_LOD",
         aggfunc="first"
     )
 
-    # Stitch BLOQ flags into the wide table, adjacent to each sample column
+    # Stitch BLOD flags into the wide table, adjacent to each sample column
     wide_with_flags = pd.DataFrame(index=wide_table.index)
     for col in [c for c in wide_table.columns if not c.endswith("_SE")]:
         wide_with_flags[col] = wide_table[col]
         wide_with_flags[col + "_SE"] = wide_table.get(col + "_SE", np.nan)
         # Boolean flag (True=below LOD); if missing, set False
-        if bloq_wide is not None and col in getattr(bloq_wide, "columns", []):
-            wide_with_flags[col + "_BLOQ"] = bloq_wide[col].fillna(False).astype(bool)
+        if blod_wide is not None and col in getattr(blod_wide, "columns", []):
+            wide_with_flags[col + "_BLOD"] = blod_wide[col].fillna(False).astype(bool)
         else:
-            wide_with_flags[col + "_BLOQ"] = False
+            wide_with_flags[col + "_BLOD"] = False
 
-    st.write("### Wide Table: Estimated Concentrations, SE, and BLOQ (Below LOD) flags")
+    st.write("### Wide Table: Estimated Concentrations, SE, and BLOD (Below LOD) flags")
     st.dataframe(wide_with_flags)
     st.download_button(
-        label="Download Wide Table (+BLOQ) CSV",
+        label="Download Wide Table (+BLOD) CSV",
         data=wide_with_flags.to_csv().encode('utf-8'),
-        file_name="wide_table_with_bloq.csv",
+        file_name="wide_table_with_blod.csv",
         mime="text/csv"
     )
 
